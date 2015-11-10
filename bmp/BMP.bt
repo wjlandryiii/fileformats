@@ -1,0 +1,110 @@
+// 010 Editor BMP file binary template
+// Joseph Landry 2015
+
+// https://en.wikipedia.org/wiki/BMP_file_format
+// https://msdn.microsoft.com/en-us/library/dd183391(v=vs.85).aspx
+// https://msdn.microsoft.com/en-us/library/dd183386(VS.85).aspx
+// http://www.drdobbs.com/architecture-and-design/the-bmp-file-format-part-1/184409517
+
+// Structs coped from MSDN and Windows SDK
+
+typedef struct tagBITMAPFILEHEADER {
+  WORD  bfType;
+  DWORD bfSize;
+  WORD  bfReserved1;
+  WORD  bfReserved2;
+  DWORD bfOffBits;
+} BITMAPFILEHEADER;
+
+typedef struct tagBITMAPCOREHEADER {
+  DWORD bcSize;
+  WORD  bcWidth;
+  WORD  bcHeight;
+  WORD  bcPlanes;
+  WORD  bcBitCount;
+} BITMAPCOREHEADER;
+
+typedef struct tagBITMAPINFOHEADER {
+  DWORD biSize;
+  LONG  biWidth;
+  LONG  biHeight;
+  WORD  biPlanes;
+  WORD  biBitCount;
+  DWORD biCompression;
+  DWORD biSizeImage;
+  LONG  biXPelsPerMeter;
+  LONG  biYPelsPerMeter;
+  DWORD biClrUsed;
+  DWORD biClrImportant;
+} BITMAPINFOHEADER;
+
+typedef struct {
+  DWORD        bV4Size;
+  LONG         bV4Width;
+  LONG         bV4Height;
+  WORD         bV4Planes;
+  WORD         bV4BitCount;
+  DWORD        bV4V4Compression;
+  DWORD        bV4SizeImage;
+  LONG         bV4XPelsPerMeter;
+  LONG         bV4YPelsPerMeter;
+  DWORD        bV4ClrUsed;
+  DWORD        bV4ClrImportant;
+  DWORD        bV4RedMask;
+  DWORD        bV4GreenMask;
+  DWORD        bV4BlueMask;
+  DWORD        bV4AlphaMask;
+  DWORD        bV4CSType;
+  DWORD        bV4Endpoints[9]; // TODO: CIEXYZTRIPLE
+  DWORD        bV4GammaRed;
+  DWORD        bV4GammaGreen;
+  DWORD        bV4GammaBlue;
+} BITMAPV4HEADER;
+
+typedef struct {
+  DWORD        bV5Size;
+  LONG         bV5Width;
+  LONG         bV5Height;
+  WORD         bV5Planes;
+  WORD         bV5BitCount;
+  DWORD        bV5Compression;
+  DWORD        bV5SizeImage;
+  LONG         bV5XPelsPerMeter;
+  LONG         bV5YPelsPerMeter;
+  DWORD        bV5ClrUsed;
+  DWORD        bV5ClrImportant;
+  DWORD        bV5RedMask;
+  DWORD        bV5GreenMask;
+  DWORD        bV5BlueMask;
+  DWORD        bV5AlphaMask;
+  DWORD        bV5CSType;
+  DWORD        bV5Endpoints[9]; // TODO: fix CIEXYZTRIPLE type
+  DWORD        bV5GammaRed;
+  DWORD        bV5GammaGreen;
+  DWORD        bV5GammaBlue;
+  DWORD        bV5Intent;
+  DWORD        bV5ProfileData;
+  DWORD        bV5ProfileSize;
+  DWORD        bV5Reserved;
+} BITMAPV5HEADER;
+
+SetBackColor(cLtGray);
+BITMAPFILEHEADER fileHeader;
+
+// "BM" == 0x4d42
+Assert(fileHeader.bfType == 0x4d42, "Invalid bfType (Magic number)");
+
+local int size = ReadInt(FTell());
+if(size == 12){
+	BITMAPCOREHEADER coreHeader;
+} else if(size == 40){
+	BITMAPINFOHEADER infoHeader;
+} else if(size == 108){
+	BITMAPV4HEADER v4Header;
+} else if(size == 124){
+	BITMAPV5HEADER v5Header;
+	FSeek(fileHeader.bfOffBits);
+	UBYTE bits[v5Header.bV5SizeImage];
+} else {
+	Assert(0, "Unknown bitmap header type");
+}
