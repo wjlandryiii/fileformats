@@ -12,16 +12,10 @@ uint8_t *deflated = (uint8_t *) "\xab\xaa\xc2\x04\x00";
 
 struct tree_node {
 	int is_leaf;
-	int is_literal;
-	int literal_value;
-	int length_value;
-
-	// TODO: remove this
-	int value;
+	int symbol;
 };
 
-// TODO: rename `fixed_length_value_tree` to `fixed_length_literal_tree` ?
-struct tree_node fixed_length_value_tree[524288]; // 2 ^^ 19
+struct tree_node length_tree_fixed[524288]; // 2 ^^ 19
 /*
 struct tree_node fixed_distance_tree[2^19];
 struct tree_node dynamic_length_value_tree[2^19];
@@ -104,28 +98,40 @@ int length_extra_bits[][2] = {
 /* Code: 285 */ {0, 258},
 };
 
-
-int extra_bits_for_length_code(int code){
-	// TODO: should `int code` be `int value`?
-	if(0 <= code && code <= 256){
+int length_symbol_has_extra_bits(int symbol){
+	if(0 <= symbol && symbol <= 256){
 		return 0;
-	} else if(257 <= code && code <= 285){
-		return length_extra_bits[code - 257][0];
-	} else if(286 <= code && code <= 287){
+	} else if(257 <= symbol && symbol <= 285){
+		return 1;
+	} else if(286 <= symbol && symbol <= 287){
 		return 0;
 	} else {
 		fflush(stdout);
-		fprintf(stderr, "invalid length code: %d", code);
+		fprintf(stderr, "invalid length symbol: %d line:%d", symbol, __LINE__);
+		exit(1);
+	}
+
+}
+int extra_bits_count_for_length_symbol(int symbol){
+	if(0 <= symbol && symbol <= 256){
+		return 0;
+	} else if(257 <= symbol && symbol <= 285){
+		return length_extra_bits[symbol - 257][0];
+	} else if(286 <= symbol && symbol <= 287){
+		return 0;
+	} else {
+		fflush(stdout);
+		fprintf(stderr, "invalid length symbol: %d", symbol);
 		exit(1);
 	}
 }
-
-int get_length_value_with_value_and_extra_bits(int value, int extra_bits){
+int length_from_length_symbol_and_extra_bits(int value, int extra_bits){
 	if(256 <= value && value <= 285){
-		return length_extra_bits[value][1] + extra_bits;
+		return length_extra_bits[value - 257][1] + extra_bits;
 	} else {
 		fflush(stdout);
 		fprintf(stderr, "invalid length value: %d\n", value);
+		exit(1);
 	}
 }
 
@@ -212,10 +218,10 @@ int length_value_bits[4][4] = {
 	{280, 297, 8, -88},
 };
 
-int code_for_length_value(int value){
+int fixed_length_literal_code_from_symbol(int symbol){
 	for(int i = 0; i < 4; i++){
-		if(length_value_bits[i][0] <= value && value <= length_value_bits[i][1]){
-			return value + length_value_bits[i][3];
+		if(length_value_bits[i][0] <= symbol && symbol <= length_value_bits[i][1]){
+			return symbol + length_value_bits[i][3];
 		}
 	}
 	fflush(stdout);
@@ -235,43 +241,15 @@ int is_value_literal(int value){
 	}
 }
 
-int code_length_for_length_value(int value){
+int fixed_length_literal_code_length_from_symbol(int symbol){
 	for(int i = 0; i < 4; i++){
-		if(length_value_bits[i][0] <= value && value <= length_value_bits[i][1]){
+		if(length_value_bits[i][0] <= symbol && symbol <= length_value_bits[i][1]){
 			return length_value_bits[i][2];
 		}
 	}
 	fflush(stdout);
 	fprintf(stderr, "invalid length value (likely programmer error)\n");
 	exit(1);
-}
-
-int is_value_literal(int value){
-	if(0 <= value && value <= 255){
-		return 1;
-	} else {
-		return 0;
-	}
-}
-
-int is_value_length(int value){
-	if(257 <= value && value <= 285){
-		return 1;
-	} else {
-		return 0;
-	}
-}
-
-int is_value_special(int value){
-	if(value == 256){
-		return 1;
-	} else if(value == 286){
-		return 1;
-	} else if(value == 287){
-		return 1;
-	} else {
-		return 0;
-	}
 }
 
 
@@ -292,89 +270,24 @@ void build_fixed_trees(){
 	int full_code_length;
 
 
-	memset(fixed_length_value_tree, 0, sizeof(fixed_length_value_tree));
+	memset(length_tree_fixed, 0, sizeof(length_tree_fixed));
 
 	for(i = 0; i < 288; i++){
+		int code = fixed_length_literal_code_from_symbol(i);
+		int code_length = fixed_length_literal_code_length_from_symbol(i);
 
-		if(is_value_literal(i)){
-			int code = code_for_length_value(i);
-			int code_length = code_length_for_length_value(i);
-
-
-			int node_index = 0;
-
-			for(i = code_length - 1; 0 <= i; i--){
-				int bit = (code & (1<<i)) >> i;
-				if(bit == 0){
-					node_index = node_index * 2 + 1;
-				} else {
-					node_index = node_index * 2 + 2;
-				}
-				assert(fixed_length_value_tree[node_index].is_leaf == 0);
-			}
-
-			fixed_length_value_tree[node_index].is_leaf = 1;
-			fixed_length_value_tree[node_index].is_literal = 1;
-			fixed_length_value_tree[node_index].literal_value = i;
-		} else if(is_value_length(i)){
-			int code = code_for_length_value(i);
-			int code_length = code_length_for_length_value(i);
-			//int extra_bits_count = extra_bits_count
-
-		} else if(is_value_special(i)){
-
-		} else {
-			fflush(stdout);
-			fprintf(stderr, "programmer error: line:%d\n", __LINE__);
-			exit(1);
-		}
-
-#if 0
-		is_literal = is_value_literal(i);
-		is_length = is_value_length(i);
-		is_special = is_value_special(i);
-
-		code = code_for_length_value(i);
-		code_length = code_length_for_length_value(i);
-		is_literal = is_value_literal(i);
-		if(is_literal){
-			code_extra_bits = 0;
-			literal_value = i;
-		} else {
-			code_extra_bits = extra_bits_for_length_code(i);
-		}
-
-		if(code_extra_bits == 0){
-			node_index = 0;
-			for(j = code_length - 1; 0 <= j; j--){
-				if((code & (1<<j)) == 0){
-					node_index = node_index * 2 + 1;
-				} else {
-					node_index = node_index * 2 + 2;
-				}
-				assert(node_index < 2524288);
-				assert(fixed_length_value_tree[node_index].is_leaf == 0);
-			}
-			fixed_length_value_tree[node_index].is_leaf = 1;
-			fixed_length_value_tree[node_index].value = i;
-			if(is_literal){
-				fixed_length_value_tree[node_index].literal_value = literal_value;
-				fixed_length_value_tree[node_index].length_value = -1;
+		int node_index = 0;
+		for(j = code_length - 1; 0 <= j; j--){
+			int bit = (code & (1<<j)) >> j;
+			if(bit == 0){
+				node_index = node_index * 2 + 1;
 			} else {
-				fixed_length_value_tree[node_index].literal_value = -1;
-				length_value = get_length_value_with_value_and_extra_bits(i, 0);
-				fixed_length_value_tree[node_index].length_value = length_value;
+				node_index = node_index * 2 + 2;
 			}
-		} else {
-			/*
-			for(j = 0; j < (1 << (code_extra_bits+1)); j++){
-				full_code = (code << code_extra_bits) | (j & ((1 << (code_extra_bits+1))-1));
-				full_code_length = code_length + code_extra_bits;
-
-			}
-			*/
+			assert(length_tree_fixed[node_index].is_leaf == 0);
 		}
-#endif
+		length_tree_fixed[node_index].is_leaf = 1;
+		length_tree_fixed[node_index].symbol = i;
 	}
 }
 
@@ -386,6 +299,14 @@ void example1(){
 	int node_index;
 	int length_code;
 	int nbits;
+	int extra_bits_count;
+	int extra_bits;
+	int symbol;
+	int length;
+	int distance_code;
+	int distance_extra_bits_count;
+	int distance_extra_bits;
+	int distance;
 
 	// READ BLOCK HEADER
 	bfinal = readbit(data, bit_index++);
@@ -411,14 +332,14 @@ void example1(){
 		} else {
 			node_index = node_index * 2 + 2;
 		}
-		if(fixed_length_value_tree[node_index].is_leaf){
+		if(length_tree_fixed[node_index].is_leaf){
 			break;
 		}
 	}
 
 	printf("LENGHT_CODE_LENGHT: %d\n", nbits);
 	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
-	printf("LENGTH_VALUE: %d\n", fixed_length_value_tree[node_index].value);
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
 	printf("\n");
 
 	node_index = 0;
@@ -432,13 +353,13 @@ void example1(){
 		} else {
 			node_index = node_index * 2 + 2;
 		}
-		if(fixed_length_value_tree[node_index].is_leaf){
+		if(length_tree_fixed[node_index].is_leaf){
 			break;
 		}
 	}
 	printf("LENGTH_CODE_LENGTH: %d\n", nbits);
 	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
-	printf("LENGTH_VALUE: %d\n", fixed_length_value_tree[node_index].value);
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
 	printf("\n");
 
 	node_index = 0;
@@ -452,13 +373,58 @@ void example1(){
 		} else {
 			node_index = node_index * 2 + 2;
 		}
-		if(fixed_length_value_tree[node_index].is_leaf){
+		if(length_tree_fixed[node_index].is_leaf){
 			break;
 		}
 	}
 	printf("LENGTH_CODE_LENGTH: %d\n", nbits);
 	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
-	printf("LENGTH_VALUE: %d\n", fixed_length_value_tree[node_index].value);
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
+	printf("\n");
+
+	symbol = length_tree_fixed[node_index].symbol;
+	assert(length_symbol_has_extra_bits(symbol));
+
+	extra_bits_count = extra_bits_count_for_length_symbol(symbol);
+
+	extra_bits = 0;
+	for(int i = 0; i < extra_bits_count; i++){
+		extra_bits = (extra_bits<<1) | readbit(data, bit_index++);
+	}
+
+	printf("EXTRA_BITS_COUNT: %d\n", extra_bits_count);
+	printf("EXTRA_BITS: %s\n", tobin(extra_bits, extra_bits_count));
+
+	length = length_from_length_symbol_and_extra_bits(symbol, extra_bits);
+
+	printf("ACTUAL LENGTH: %d\n", length);
+
+
+	distance_code = 0;
+	for(int i = 0; i < 5; i++){
+		distance_code = (distance_code << 1) | readbit(data, bit_index++);
+	}
+
+	printf("DISTANCE_CODE: %d\n", distance_code);
+
+	node_index = 0;
+	length_code = 0;
+	for(int i = 0; i < 18; i++){
+		bit = readbit(data, bit_index++);
+		length_code = (length_code << 1) | bit;
+		nbits = i + 1;
+		if(bit == 0){
+			node_index = node_index * 2 + 1;
+		} else {
+			node_index = node_index * 2 + 2;
+		}
+		if(length_tree_fixed[node_index].is_leaf){
+			break;
+		}
+	}
+	printf("LENGTH_CODE_LENGTH: %d\n", nbits);
+	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
 	printf("\n");
 }
 
@@ -495,7 +461,7 @@ int main(int argc, char *argv[]){
 		}
 	}
 	printf("symbol: %s\n", tobin(b, 8));
-	printf("value: %d\n", fixed_length_value_tree[node_index].value);
+	printf("value: %d\n", length_tree_fixed[node_index].value);
 */
 	return 0;
 }
@@ -557,7 +523,7 @@ void inflate(uint8_t *data){
 
 			while(1){
 				node_index = 0;
-				while(!fixed_length_value_tree[node_index].is_leaf){
+				while(!length_tree_fixed[node_index].is_leaf){
 					if(readbit(data, bit_index++) == 0){
 						node_index = node_index * 2 + 1;
 					} else {
@@ -565,11 +531,11 @@ void inflate(uint8_t *data){
 					}
 				}
 
-				value = fixed_length_value_tree[node_index].value;
+				value = length_tree_fixed[node_index].symbol;
 				if(value < 256){
 					printf("Literal: %c\n", value);
 				} else if(257 <= value && value <= 285){
-					length_extra_bits_count = extra_bits_for_length_code(value);
+					length_extra_bits_count = extra_bits_count_for_length_symbol(value);
 					length_extra_bits = 0;
 					for(int i = 0; i < length_extra_bits_count; i++){
 						length_extra_bits_count <<= 1;
