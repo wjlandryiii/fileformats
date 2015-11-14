@@ -12,9 +12,15 @@ uint8_t *deflated = (uint8_t *) "\xab\xaa\xc2\x04\x00";
 
 struct tree_node {
 	int is_leaf;
+	int is_literal;
+	int literal_value;
+	int length_value;
+
+	// TODO: remove this
 	int value;
 };
 
+// TODO: rename `fixed_length_value_tree` to `fixed_length_literal_tree` ?
 struct tree_node fixed_length_value_tree[524288]; // 2 ^^ 19
 /*
 struct tree_node fixed_distance_tree[2^19];
@@ -98,16 +104,30 @@ int length_extra_bits[][2] = {
 /* Code: 285 */ {0, 258},
 };
 
+
 int extra_bits_for_length_code(int code){
-	if(257 <= code && code <= 285){
+	// TODO: should `int code` be `int value`?
+	if(0 <= code && code <= 256){
+		return 0;
+	} else if(257 <= code && code <= 285){
 		return length_extra_bits[code - 257][0];
+	} else if(286 <= code && code <= 287){
+		return 0;
 	} else {
 		fflush(stdout);
-		fprintf(stderr, "invalid length code");
+		fprintf(stderr, "invalid length code: %d", code);
 		exit(1);
 	}
 }
 
+int get_length_value_with_value_and_extra_bits(int value, int extra_bits){
+	if(256 <= value && value <= 285){
+		return length_extra_bits[value][1] + extra_bits;
+	} else {
+		fflush(stdout);
+		fprintf(stderr, "invalid length value: %d\n", value);
+	}
+}
 
 /*
 	RFC1951 page 12:
@@ -171,117 +191,87 @@ int extra_bits_for_distance_code(int code){
 	}
 }
 
-void inflate(uint8_t *data){
-	int bit_index = 0;
+/*
+	RFC1951 page 12:
+                   Lit Value    Bits        Codes
+                   ---------    ----        -----
+                     0 - 143     8          00110000 through
+                                            10111111
+                   144 - 255     9          110010000 through
+                                            111111111
+                   256 - 279     7          0000000 through
+                                            0010111
+                   280 - 287     8          11000000 through
+                                            11000111
+*/
 
-	int bfinal = 0;
-	int btype = 0;
-	int len;
-	int nlen;
-	int node_index;
-	int length;
-	int distance;
-	int code;
-	int value;
-	int length_extra_bits_count;
-	int length_extra_bits;
-	int distance_extra_bits_count;
-	int distance_extra_bits;
+int length_value_bits[4][4] = {
+	{0, 143, 8, 48},
+	{144, 255, 9, 256},
+	{256, 279, 7, -256},
+	{280, 297, 8, -88},
+};
 
+int code_for_length_value(int value){
+	for(int i = 0; i < 4; i++){
+		if(length_value_bits[i][0] <= value && value <= length_value_bits[i][1]){
+			return value + length_value_bits[i][3];
+		}
+	}
+	fflush(stdout);
+	fprintf(stderr, "invalid length value (likely programmer error)\n");
+	exit(1);
+}
 
-	// RFC1951 "3.2.3. Details of block format"
-	do {
-		bfinal = readbit(data, bit_index++);
-		btype = 0;
-		btype |= readbit(data, bit_index++) << 0;
-		btype |= readbit(data, bit_index++) << 1;
+int is_value_literal(int value){
+	if(0 <= value && value <= 255){
+		return 1;
+	} else if(256 <= value && value <= 287){
+		return 0;
+	} else {
+		fflush(stdout);
+		fprintf(stderr, "invalid value (likely programmer error)\n");
+		exit(1);
+	}
+}
 
-		switch(btype){
-		case 0: // "00 - no compression"
-			// RFC1951 "3.2.4. Non-compressed blocks (BTYPE=00)"
+int code_length_for_length_value(int value){
+	for(int i = 0; i < 4; i++){
+		if(length_value_bits[i][0] <= value && value <= length_value_bits[i][1]){
+			return length_value_bits[i][2];
+		}
+	}
+	fflush(stdout);
+	fprintf(stderr, "invalid length value (likely programmer error)\n");
+	exit(1);
+}
 
-			// "Any bits of input up to the next byte boundary are ignored."
-			if(bit_index % 8 != 0){
-				bit_index += 8 - (bit_index % 8);
-			}
+int is_value_literal(int value){
+	if(0 <= value && value <= 255){
+		return 1;
+	} else {
+		return 0;
+	}
+}
 
-			len = 0;
-			len = data[bit_index/8 + 0] << 8;
-			len = data[bit_index/8 + 1] << 0;
-			bit_index += 16;
+int is_value_length(int value){
+	if(257 <= value && value <= 285){
+		return 1;
+	} else {
+		return 0;
+	}
+}
 
-			nlen = 0;
-			nlen = data[bit_index/8 + 0] << 8;
-			nlen = data[bit_index/8 + 1] << 0;
-			bit_index += 16;
-
-			if(len != ~nlen){
-				fflush(stdout);
-				fprintf(stderr, "LEN != NLEN\n");
-				exit(1);
-			}
-
-			fwrite(&data[bit_index/8], sizeof(uint8_t), len, stdout);
-			bit_index += 8 * len;
-			break;
-		case 1: // "01 - compressed with fixed Huffman codes"
-
-			while(1){
-				node_index = 0;
-				while(!fixed_length_value_tree[node_index].is_leaf){
-					if(readbit(data, bit_index++) == 0){
-						node_index = node_index * 2 + 1;
-					} else {
-						node_index = node_index * 2 + 2;
-					}
-				}
-
-				value = fixed_length_value_tree[node_index].value;
-				if(value < 256){
-					printf("Literal: %c\n", value);
-				} else if(257 <= value && value <= 285){
-					length_extra_bits_count = extra_bits_for_length_code(value);
-					length_extra_bits = 0;
-					for(int i = 0; i < length_extra_bits_count; i++){
-						length_extra_bits_count <<= 1;
-						length_extra_bits_count |= readbit(data, bit_index++);
-					}
-
-					code = 0;
-					for(int i = 0; i < 5; i++){
-						code <<= 1;
-						code |= readbit(data, bit_index++);
-					}
-
-					distance_extra_bits_count = extra_bits_for_distance_code(code);
-
-					distance_extra_bits = 0;
-					for(int i = 0; i < 5; i++){
-						distance_extra_bits <<= 1;
-						distance_extra_bits |= readbit(data, bit_index++);
-					}
-
-
-					// TODO: read distance;
-				}
-			}
-
-			break;
-		case 2: // "10 - compressed with dynamic Huffman codes"
-			fflush(stdout);
-			fprintf(stderr, "not implemented!\n");
-			exit(1);
-			break;
-		case 3: // "11 - reserved (error)"
-			fflush(stdout);
-			fprintf(stderr, "reserved BTYPE type (error)\n");
-			exit(1);
-		default: // this case should never happen.
-			fflush(stdout);
-			fprintf(stderr, "programmer error\n");
-			exit(1);
-		};
-	} while(bfinal == 0);
+int is_value_special(int value){
+	if(value == 256){
+		return 1;
+	} else if(value == 286){
+		return 1;
+	} else if(value == 287){
+		return 1;
+	} else {
+		return 0;
+	}
 }
 
 
@@ -291,43 +281,100 @@ void inflate(uint8_t *data){
 void build_fixed_trees(){
 	int code;
 	int code_length;
-	int i, j;
+	int code_extra_bits;
+	int i, j, k;
 	int node_index;
+
+	int literal_value;
+	int length_value;
+
+	int full_code;
+	int full_code_length;
 
 
 	memset(fixed_length_value_tree, 0, sizeof(fixed_length_value_tree));
 
 	for(i = 0; i < 288; i++){
-		if(0 <= i && i <= 143){
-			code = i + 48;
-			code_length = 8;
-		} else if(144 <= i && i <= 255){
-			code = i + 256;
-			code_length = 9;
-		} else if(256 <= i && i <= 279){
-			code = i - 256;
-			code_length = 7;
-		} else if(280 <= i && i <= 287){
-			code = i - 88;
-			code_length = 8;
+
+		if(is_value_literal(i)){
+			int code = code_for_length_value(i);
+			int code_length = code_length_for_length_value(i);
+
+
+			int node_index = 0;
+
+			for(i = code_length - 1; 0 <= i; i--){
+				int bit = (code & (1<<i)) >> i;
+				if(bit == 0){
+					node_index = node_index * 2 + 1;
+				} else {
+					node_index = node_index * 2 + 2;
+				}
+				assert(fixed_length_value_tree[node_index].is_leaf == 0);
+			}
+
+			fixed_length_value_tree[node_index].is_leaf = 1;
+			fixed_length_value_tree[node_index].is_literal = 1;
+			fixed_length_value_tree[node_index].literal_value = i;
+		} else if(is_value_length(i)){
+			int code = code_for_length_value(i);
+			int code_length = code_length_for_length_value(i);
+			//int extra_bits_count = extra_bits_count
+
+		} else if(is_value_special(i)){
+
 		} else {
 			fflush(stdout);
-			fprintf(stderr, "programmer error\n");
+			fprintf(stderr, "programmer error: line:%d\n", __LINE__);
 			exit(1);
 		}
 
-		node_index = 0;
-		for(j = code_length - 1; 0 <= j; j--){
-			if((code & (1<<j)) == 0){
-				node_index = node_index * 2 + 1;
-			} else {
-				node_index = node_index * 2 + 2;
-			}
-			assert(node_index < 2524288);
-			assert(fixed_length_value_tree[node_index].is_leaf == 0);
+#if 0
+		is_literal = is_value_literal(i);
+		is_length = is_value_length(i);
+		is_special = is_value_special(i);
+
+		code = code_for_length_value(i);
+		code_length = code_length_for_length_value(i);
+		is_literal = is_value_literal(i);
+		if(is_literal){
+			code_extra_bits = 0;
+			literal_value = i;
+		} else {
+			code_extra_bits = extra_bits_for_length_code(i);
 		}
-		fixed_length_value_tree[node_index].is_leaf = 1;
-		fixed_length_value_tree[node_index].value = i;
+
+		if(code_extra_bits == 0){
+			node_index = 0;
+			for(j = code_length - 1; 0 <= j; j--){
+				if((code & (1<<j)) == 0){
+					node_index = node_index * 2 + 1;
+				} else {
+					node_index = node_index * 2 + 2;
+				}
+				assert(node_index < 2524288);
+				assert(fixed_length_value_tree[node_index].is_leaf == 0);
+			}
+			fixed_length_value_tree[node_index].is_leaf = 1;
+			fixed_length_value_tree[node_index].value = i;
+			if(is_literal){
+				fixed_length_value_tree[node_index].literal_value = literal_value;
+				fixed_length_value_tree[node_index].length_value = -1;
+			} else {
+				fixed_length_value_tree[node_index].literal_value = -1;
+				length_value = get_length_value_with_value_and_extra_bits(i, 0);
+				fixed_length_value_tree[node_index].length_value = length_value;
+			}
+		} else {
+			/*
+			for(j = 0; j < (1 << (code_extra_bits+1)); j++){
+				full_code = (code << code_extra_bits) | (j & ((1 << (code_extra_bits+1))-1));
+				full_code_length = code_length + code_extra_bits;
+
+			}
+			*/
+		}
+#endif
 	}
 }
 
@@ -451,5 +498,118 @@ int main(int argc, char *argv[]){
 	printf("value: %d\n", fixed_length_value_tree[node_index].value);
 */
 	return 0;
+}
+
+void inflate(uint8_t *data){
+	int bit_index = 0;
+
+	int bfinal = 0;
+	int btype = 0;
+	int len;
+	int nlen;
+	int node_index;
+	int length;
+	int distance;
+	int code;
+	int value;
+	int length_extra_bits_count;
+	int length_extra_bits;
+	int distance_extra_bits_count;
+	int distance_extra_bits;
+
+
+	// RFC1951 "3.2.3. Details of block format"
+	do {
+		bfinal = readbit(data, bit_index++);
+		btype = 0;
+		btype |= readbit(data, bit_index++) << 0;
+		btype |= readbit(data, bit_index++) << 1;
+
+		switch(btype){
+		case 0: // "00 - no compression"
+			// RFC1951 "3.2.4. Non-compressed blocks (BTYPE=00)"
+
+			// "Any bits of input up to the next byte boundary are ignored."
+			if(bit_index % 8 != 0){
+				bit_index += 8 - (bit_index % 8);
+			}
+
+			len = 0;
+			len = data[bit_index/8 + 0] << 8;
+			len = data[bit_index/8 + 1] << 0;
+			bit_index += 16;
+
+			nlen = 0;
+			nlen = data[bit_index/8 + 0] << 8;
+			nlen = data[bit_index/8 + 1] << 0;
+			bit_index += 16;
+
+			if(len != ~nlen){
+				fflush(stdout);
+				fprintf(stderr, "LEN != NLEN\n");
+				exit(1);
+			}
+
+			fwrite(&data[bit_index/8], sizeof(uint8_t), len, stdout);
+			bit_index += 8 * len;
+			break;
+		case 1: // "01 - compressed with fixed Huffman codes"
+
+			while(1){
+				node_index = 0;
+				while(!fixed_length_value_tree[node_index].is_leaf){
+					if(readbit(data, bit_index++) == 0){
+						node_index = node_index * 2 + 1;
+					} else {
+						node_index = node_index * 2 + 2;
+					}
+				}
+
+				value = fixed_length_value_tree[node_index].value;
+				if(value < 256){
+					printf("Literal: %c\n", value);
+				} else if(257 <= value && value <= 285){
+					length_extra_bits_count = extra_bits_for_length_code(value);
+					length_extra_bits = 0;
+					for(int i = 0; i < length_extra_bits_count; i++){
+						length_extra_bits_count <<= 1;
+						length_extra_bits_count |= readbit(data, bit_index++);
+					}
+
+					code = 0;
+					for(int i = 0; i < 5; i++){
+						code <<= 1;
+						code |= readbit(data, bit_index++);
+					}
+
+					distance_extra_bits_count = extra_bits_for_distance_code(code);
+
+					distance_extra_bits = 0;
+					for(int i = 0; i < 5; i++){
+						distance_extra_bits <<= 1;
+						distance_extra_bits |= readbit(data, bit_index++);
+					}
+
+
+					// TODO: read distance;
+				}
+			}
+
+			break;
+		case 2: // "10 - compressed with dynamic Huffman codes"
+			fflush(stdout);
+			fprintf(stderr, "not implemented!\n");
+			exit(1);
+			break;
+		case 3: // "11 - reserved (error)"
+			fflush(stdout);
+			fprintf(stderr, "reserved BTYPE type (error)\n");
+			exit(1);
+		default: // this case should never happen.
+			fflush(stdout);
+			fprintf(stderr, "programmer error\n");
+			exit(1);
+		};
+	} while(bfinal == 0);
 }
 
