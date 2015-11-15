@@ -1,6 +1,9 @@
-all: inflate
+all: inflate output
 
 inflate: inflate.c
+	gcc -o $@ $<
+
+output: output.c
 	gcc -o $@ $<
 
 
@@ -8,3 +11,4 @@ inflate: inflate.c
 
 clean:
 	rm -f inflate
+	rm -f output

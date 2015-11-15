@@ -15,6 +15,8 @@ struct tree_node {
 	int symbol;
 };
 
+
+
 struct tree_node length_tree_fixed[524288]; // 2 ^^ 19
 /*
 struct tree_node fixed_distance_tree[2^19];
@@ -187,9 +189,19 @@ int distance_extra_bits[][2] = {
 /* code:29 */ {13, 24577},
 };
 
-int extra_bits_for_distance_code(int code){
+int extra_bits_count_for_distance_code(int code){
 	if(0 <= code && code <= 29){
 		return distance_extra_bits[code][0];
+	} else {
+		fflush(stdout);
+		fprintf(stderr, "invalid distance code\n");
+		exit(1);
+	}
+}
+
+int distance_from_code_and_extra(int code, int extra){
+	if(0 <= code && code <= 29){
+		return distance_extra_bits[code][1] + extra;
 	} else {
 		fflush(stdout);
 		fprintf(stderr, "invalid distance code\n");
@@ -229,7 +241,7 @@ int fixed_length_literal_code_from_symbol(int symbol){
 	exit(1);
 }
 
-int is_value_literal(int value){
+int is_length_literal_symbol_literal(int value){
 	if(0 <= value && value <= 255){
 		return 1;
 	} else if(256 <= value && value <= 287){
@@ -337,8 +349,7 @@ void example1(){
 		}
 	}
 
-	printf("LENGHT_CODE_LENGHT: %d\n", nbits);
-	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
+	printf("LENGTH_CODE: %s (lenght: %d)\n", tobin(length_code, nbits), nbits);
 	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
 	printf("\n");
 
@@ -429,6 +440,211 @@ void example1(){
 }
 
 
+void example2(){
+	uint8_t *data = (uint8_t *)"\x4b\x4c\x4a\xc4\x80\x00";
+	int bit_index;
+	int bfinal;
+	int btype;
+	int node_index;
+	int bit;
+	int length_code;
+	int nbits;
+	int symbol;
+	int extra_bits_count;
+	int extra_bits;
+	int length;
+	int distance_code;
+	int distance;
+	int distance_extra_bits_count;
+	int distance_extra_bits;
+
+
+	bit_index = 0;
+	// READ BLOCK HEADER
+	bfinal = readbit(data, bit_index++);
+	btype = 0;
+	btype |= readbit(data, bit_index++) << 0;
+	btype |= readbit(data, bit_index++) << 1;
+	printf("BFINAL: %s\n", tobin(bfinal, 1));
+	printf("BTYPE : %s\n", tobin(btype, 2));
+	printf("\n");
+
+	assert(bfinal == 1);
+	assert(btype == 1);
+
+	// read first length code;
+	node_index = 0;
+	length_code = 0;
+	for(int i = 0; i < 18; i++){
+		bit = readbit(data, bit_index++);
+		length_code = (length_code << 1) | bit;
+		nbits = i + 1;
+		if(bit == 0){
+			node_index = node_index * 2 + 1;
+		} else {
+			node_index = node_index * 2 + 2;
+		}
+		if(length_tree_fixed[node_index].is_leaf){
+			break;
+		}
+	}
+
+	printf("LENGHT_CODE_LENGHT: %d\n", nbits);
+	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
+	printf("\n");
+
+
+	// read second length code;
+	node_index = 0;
+	length_code = 0;
+	for(int i = 0; i < 18; i++){
+		bit = readbit(data, bit_index++);
+		length_code = (length_code << 1) | bit;
+		nbits = i + 1;
+		if(bit == 0){
+			node_index = node_index * 2 + 1;
+		} else {
+			node_index = node_index * 2 + 2;
+		}
+		if(length_tree_fixed[node_index].is_leaf){
+			break;
+		}
+	}
+
+	printf("LENGHT_CODE_LENGHT: %d\n", nbits);
+	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
+	printf("\n");
+
+
+	// read third length code;
+	node_index = 0;
+	length_code = 0;
+	for(int i = 0; i < 18; i++){
+		bit = readbit(data, bit_index++);
+		length_code = (length_code << 1) | bit;
+		nbits = i + 1;
+		if(bit == 0){
+			node_index = node_index * 2 + 1;
+		} else {
+			node_index = node_index * 2 + 2;
+		}
+		if(length_tree_fixed[node_index].is_leaf){
+			break;
+		}
+	}
+
+	printf("LENGHT_CODE_LENGHT: %d\n", nbits);
+	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
+	printf("\n");
+
+
+	// read fourth length code;
+	node_index = 0;
+	length_code = 0;
+	for(int i = 0; i < 18; i++){
+		bit = readbit(data, bit_index++);
+		length_code = (length_code << 1) | bit;
+		nbits = i + 1;
+		if(bit == 0){
+			node_index = node_index * 2 + 1;
+		} else {
+			node_index = node_index * 2 + 2;
+		}
+		if(length_tree_fixed[node_index].is_leaf){
+			break;
+		}
+	}
+
+	printf("LENGHT_CODE_LENGHT: %d\n", nbits);
+	printf("LENGTH_CODE: %s\n", tobin(length_code, nbits));
+	printf("LENGTH_VALUE: %d\n", length_tree_fixed[node_index].symbol);
+	printf("\n");
+
+	symbol = length_tree_fixed[node_index].symbol;
+	assert(length_symbol_has_extra_bits(symbol));
+
+	extra_bits_count = extra_bits_count_for_length_symbol(symbol);
+
+	extra_bits = 0;
+	for(int i = 0; i < extra_bits_count; i++){
+		extra_bits = (extra_bits<<1) | readbit(data, bit_index++);
+	}
+
+	printf("EXTRA_BITS_COUNT: %d\n", extra_bits_count);
+	printf("EXTRA_BITS: %s\n", tobin(extra_bits, extra_bits_count));
+
+	length = length_from_length_symbol_and_extra_bits(symbol, extra_bits);
+
+	printf("ACTUAL LENGTH: %d\n", length);
+
+	distance_code = 0;
+	for(int i = 0; i < 5; i++){
+		distance_code = (distance_code << 1) | readbit(data, bit_index++);
+	}
+
+	printf("DISTANCE_CODE: %d\n", distance_code);
+	distance_extra_bits_count = extra_bits_count_for_distance_code(distance_code);
+
+	assert(distance_extra_bits_count == 0);
+
+
+}
+
+int read_block_header(uint8_t *data, int bit_index, int *bfinal, int *btype){
+	int index;
+
+	*bfinal = readbit(data, bit_index++);
+	*btype = 0;
+	*btype |= readbit(data, bit_index++) << 0;
+	*btype |= readbit(data, bit_index++) << 1;
+	return bit_index;
+}
+
+int read_length_literal_symbol(uint8_t *data, int bit_index, struct tree_node *tree, int *length_literal_symbol){
+	int node_index;
+
+	node_index = 0;
+	for(int i = 0; i < 18; i++){
+		if(readbit(data, bit_index++) == 0){
+			node_index = node_index * 2 + 1;
+		} else {
+			node_index = node_index * 2 + 2;
+		}
+		if(tree[node_index].is_leaf){
+			*length_literal_symbol = tree[node_index].symbol;
+			return bit_index;
+		}
+	}
+
+	fflush(stdout);
+	fprintf(stderr, "invalid code > 18 bits\n");
+	exit(1);
+}
+
+void example3(){
+	uint8_t *data = (uint8_t *)"\x4b\x4c\x4a\xc4\x80\x00";
+	int bit_index = 0;
+
+	int bfinal = 0;
+	int btype = 0;
+	int length_literal_symbol = 0;
+
+	bit_index = read_block_header(data, bit_index, &bfinal, &btype);
+	assert(bfinal == 1);
+	assert(btype == 1);
+
+	bit_index = read_length_literal_symbol(data, bit_index, length_tree_fixed, &length_literal_symbol);
+	printf("ll_symbol: %d\n", length_literal_symbol);
+	if(is_length_literal_symbol_literal(length_literal_symbol)){
+		
+	}
+}
+
+void inflate(uint8_t *data, uint8_t *output);
+
 int main(int argc, char *argv[]){
 	//block(deflated);
 	//
@@ -436,7 +652,16 @@ int main(int argc, char *argv[]){
 
 
 	build_fixed_trees();
-	example1();
+	//example1();
+	//example2();
+	//example3();
+
+	//uint8_t *data = (uint8_t *)"\xab\xaa\xc2\x04\x00";
+	//uint8_t *data = (uint8_t *)"\x4b\x4c\x4a\xc4\x80\x00";
+	uint8_t *data = (uint8_t *)"\x01\x0c\x00\xf3\xff\x48\x65\x6c\x6c\x6f\x20\x77\x6f\x72\x6c\x64\x21";
+	uint8_t buff[1024] = {0};
+	inflate(data, buff);
+	printf("%s\n", buff);
 
 //	inflate(data);
 
@@ -466,98 +691,126 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-void inflate(uint8_t *data){
+void inflate(uint8_t *data, uint8_t *output){
+	uint8_t *pout = output;
 	int bit_index = 0;
 
 	int bfinal = 0;
 	int btype = 0;
-	int len;
-	int nlen;
-	int node_index;
-	int length;
-	int distance;
-	int code;
-	int value;
-	int length_extra_bits_count;
-	int length_extra_bits;
-	int distance_extra_bits_count;
-	int distance_extra_bits;
-
 
 	// RFC1951 "3.2.3. Details of block format"
 	do {
 		bfinal = readbit(data, bit_index++);
-		btype = 0;
-		btype |= readbit(data, bit_index++) << 0;
+		btype = readbit(data, bit_index++);
 		btype |= readbit(data, bit_index++) << 1;
 
 		switch(btype){
 		case 0: // "00 - no compression"
-			// RFC1951 "3.2.4. Non-compressed blocks (BTYPE=00)"
+			{ // RFC1951 "3.2.4. Non-compressed blocks (BTYPE=00)"
+				uint16_t len;
+				uint16_t nlen;
 
-			// "Any bits of input up to the next byte boundary are ignored."
-			if(bit_index % 8 != 0){
-				bit_index += 8 - (bit_index % 8);
+				// "Any bits of input up to the next byte boundary are ignored."
+				if(bit_index % 8 != 0){
+					bit_index += 8 - (bit_index % 8);
+				}
+
+				len = data[bit_index/8];
+				len |= data[bit_index/8 + 1] << 8;
+				bit_index += 16;
+
+				nlen = data[bit_index/8];
+				nlen |= data[bit_index/8 + 1] << 8;
+				bit_index += 16;
+
+				if(len != (~nlen & 0xffff)){
+					fflush(stdout);
+					fprintf(stderr, "LEN != NLEN\n");
+					exit(1);
+				}
+
+				for(int i = 0; i < len; i++){
+					*pout = data[bit_index/8];
+					bit_index += 8;
+					pout++;
+				}
 			}
-
-			len = 0;
-			len = data[bit_index/8 + 0] << 8;
-			len = data[bit_index/8 + 1] << 0;
-			bit_index += 16;
-
-			nlen = 0;
-			nlen = data[bit_index/8 + 0] << 8;
-			nlen = data[bit_index/8 + 1] << 0;
-			bit_index += 16;
-
-			if(len != ~nlen){
-				fflush(stdout);
-				fprintf(stderr, "LEN != NLEN\n");
-				exit(1);
-			}
-
-			fwrite(&data[bit_index/8], sizeof(uint8_t), len, stdout);
-			bit_index += 8 * len;
 			break;
 		case 1: // "01 - compressed with fixed Huffman codes"
 
 			while(1){
+				int symbol;
+				int node_index;
+				int length_code;
+				int len_symbol;
+
 				node_index = 0;
-				while(!length_tree_fixed[node_index].is_leaf){
-					if(readbit(data, bit_index++) == 0){
+				do {
+					int bit = readbit(data, bit_index++);
+					if(bit == 0){
 						node_index = node_index * 2 + 1;
 					} else {
 						node_index = node_index * 2 + 2;
 					}
-				}
+				}while(!length_tree_fixed[node_index].is_leaf);
 
-				value = length_tree_fixed[node_index].symbol;
-				if(value < 256){
-					printf("Literal: %c\n", value);
-				} else if(257 <= value && value <= 285){
-					length_extra_bits_count = extra_bits_count_for_length_symbol(value);
-					length_extra_bits = 0;
-					for(int i = 0; i < length_extra_bits_count; i++){
-						length_extra_bits_count <<= 1;
-						length_extra_bits_count |= readbit(data, bit_index++);
+				len_symbol = length_tree_fixed[node_index].symbol;
+
+				if(0 <= len_symbol && len_symbol <= 255){		// "where values 0..255 represent literal bytes"
+					printf("Literal: %c\n", len_symbol);
+					*pout++ = len_symbol;
+				} else if(len_symbol == 256){				// "the value 256 indicates end-of-block"
+					break;
+				} else if(257 <= len_symbol && len_symbol <= 285){	// "values 257..285 represent length codes"
+					int nextra;
+					int extra_bits;
+					int length;
+					int distance_code;
+					int distance;
+
+					nextra = extra_bits_count_for_length_symbol(len_symbol);
+					extra_bits = 0;
+					for(int i = 0; i < nextra; i++){
+						extra_bits <<= 1;
+						extra_bits |= readbit(data, bit_index++);
 					}
 
-					code = 0;
+					length = length_from_length_symbol_and_extra_bits(len_symbol, extra_bits);
+
+					distance_code = 0;
 					for(int i = 0; i < 5; i++){
-						code <<= 1;
-						code |= readbit(data, bit_index++);
+						distance_code <<= 1;
+						distance_code |= readbit(data, bit_index++);
 					}
 
-					distance_extra_bits_count = extra_bits_for_distance_code(code);
+					nextra = extra_bits_count_for_distance_code(distance_code);
 
-					distance_extra_bits = 0;
-					for(int i = 0; i < 5; i++){
-						distance_extra_bits <<= 1;
-						distance_extra_bits |= readbit(data, bit_index++);
+					extra_bits = 0;
+					for(int i = 0; i < nextra; i++){
+						extra_bits <<= 1;
+						extra_bits |= readbit(data, bit_index++);
 					}
 
+					distance = distance_from_code_and_extra(distance_code, extra_bits);
 
-					// TODO: read distance;
+					printf("Length Distance < %d, %d >\n", length, distance);
+					for(int i = 0; i < length; i++){
+						*pout = *(pout - distance);
+						pout++;
+					}
+				} else if(286 <= len_symbol && len_symbol <= 287){
+					/* RFC1951:
+					 * "Literal/length values 286-287 will never actually
+					 * occur in the compressed data, but participate in the code
+					 * construction."
+					 */
+					fflush(stdout);
+					fprintf(stderr, "invalid length symbol for fixed codes\n");
+					exit(1);
+				} else {
+					fflush(stdout);
+					fprintf(stderr, "invalid length symbol (programmer error?)\n");
+					exit(1);
 				}
 			}
 
