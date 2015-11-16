@@ -1,7 +1,7 @@
 all: inflate output
 
 inflate: inflate.c
-	gcc -o $@ $<
+	gcc -g -o $@ $<
 
 output: output.c
 	gcc -o $@ $<
