@@ -16,7 +16,6 @@ struct tree_node {
 };
 
 
-
 struct tree_node length_tree_fixed[524288]; // 2 ^^ 19
 struct tree_node encode_tree[524288];
 struct tree_node lit_tree[524288];
