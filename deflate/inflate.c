@@ -731,7 +731,7 @@ void example4(){
 
 	int debug_lengths[19] = {6, 5, 4, 3, 3, 4, 3, 3, 0, 3, 0, 3, 0, 4, 0, 6, 0, 0, 0};
 	int lengths_order[19] = { 16, 17, 18,  0,  8,  7,  9,  6, 10,  5, 11, 4, 12,  3, 13,  2, 14,  1, 15, };
-	int lengths[19] = {0};
+	int enc_lengths[19] = {0};
 
 	for(int i = 0; i < hclen+4; i++){
 		int a, b, c;
@@ -743,7 +743,7 @@ void example4(){
 		printf("LEN%d: %s (%d)\n", i, tobin(len, 3), len);
 		assert(len == debug_lengths[i]);
 
-		lengths[lengths_order[i]] = len;
+		enc_lengths[lengths_order[i]] = len;
 	}
 
 /* lengths:
@@ -811,7 +811,7 @@ Symbol Lenght   Code
 */
 
 
-	build_tree(lengths, sizeof(lengths)/sizeof(lengths[0]), encode_tree, sizeof(encode_tree)/sizeof(encode_tree[0]));
+	build_tree(enc_lengths, sizeof(enc_lengths)/sizeof(enc_lengths[0]), encode_tree, sizeof(encode_tree)/sizeof(encode_tree[0]));
 
 	struct enc_codes {
 		int symbol;
@@ -884,6 +884,8 @@ int symbol_order[] = {
 };
 int symbol_i = 0;
 
+	int lengths[318];
+
 	for(int i = 0; i < hlit+257 + hdist+1; i++){
 		int stop = 0;
 		node_index = 0;
@@ -903,6 +905,7 @@ int symbol_i = 0;
 
 		if(0 <= symbol && symbol <= 15){
 			printf("\t('lit', %d),\n", symbol);
+			lengths[i] = symbol;
 		} else if(symbol == 16){
 			int repeat = 0;
 			int extra = 0;
@@ -910,6 +913,15 @@ int symbol_i = 0;
 			extra |= readbit(data, bit_index++) << 1;
 			repeat = extra + 3;
 			printf("\t('rep', %d),\n", repeat);
+			if(i == 0){
+				fflush(stdout);
+				fprintf(stderr, "can't repeat last when there isn't a last!\n");
+				exit(1);
+			}
+			int last_length = lengths[i-1];
+			for(int j = 0; j < repeat; j++){
+				lengths[i+j] = last_length;
+			}
 			i += repeat - 1;
 		} else if(symbol == 17){
 			int zeros = 0;
@@ -919,6 +931,9 @@ int symbol_i = 0;
 			extra |= readbit(data, bit_index++) << 2;
 			zeros = extra + 3;
 			printf("\t('repz', %d),\n", zeros);
+			for(int j = 0; j < zeros; j++){
+				lengths[i+j] = 0;
+			}
 			i += zeros - 1;
 		} else if(symbol == 18){
 			int zeros = 0;
@@ -932,11 +947,17 @@ int symbol_i = 0;
 			extra |= readbit(data, bit_index++) << 6;
 			zeros = extra + 11;
 			printf("\t('repz', %d),\n", zeros);
+			for(int j = 0; j < zeros; j++){
+				lengths[i+j] = 0;
+			}
 			i += zeros - 1;
 		}
 	}
 	printf("bits: %d bytes: %d\n", bit_index, bit_index/8);
 	printf("symbol_i: %d / %lu\n", symbol_i, sizeof(symbol_order) / sizeof(int));
+
+	build_tree(lengths, hlit+257, lit_tree, sizeof(lit_tree) / sizeof(lit_tree[0]));
+	build_tree(lengths + hlit + 257, hdist+1, dist_tree, sizeof(dist_tree) / sizeof(dist_tree[0]));
 
 /*
  *
@@ -1035,7 +1056,7 @@ $ ./z.py  | ./puff | grep LENGHT | sort | uniq | awk -F, '{ print $2,$1 }' OSF=,
 		{ 266, "111111110"},
 		{ 275, "111111111"},
 	};
-	memset(lit_tree, 0, sizeof(lit_tree));
+	//memset(lit_tree, 0, sizeof(lit_tree));
 
 	for(int i = 0; i < 45; i++){
 		node_index = 0;
@@ -1048,8 +1069,10 @@ $ ./z.py  | ./puff | grep LENGHT | sort | uniq | awk -F, '{ print $2,$1 }' OSF=,
 				node_index = node_index * 2 + 2;
 			}
 		}
-		lit_tree[node_index].is_leaf = 1;
-		lit_tree[node_index].symbol = lit_codes_table[i].symbol;
+		//lit_tree[node_index].is_leaf = 1;
+		//lit_tree[node_index].symbol = lit_codes_table[i].symbol;
+		assert(lit_tree[node_index].is_leaf == 1);
+		assert(lit_tree[node_index].symbol == lit_codes_table[i].symbol);
 	}
 	printf("LIT TREE BUILT!\n");
 
@@ -1084,7 +1107,7 @@ $ ./z.py  | ./puff | grep DIST | sort | uniq | awk -F, '{ print $2,$1 }' OSF=, -
 		{19, "11111"},
 	};
 
-	memset(dist_tree, 0, sizeof(dist_tree));
+	//memset(dist_tree, 0, sizeof(dist_tree));
 
 	for(int i = 0; i < 12; i++){
 		node_index = 0;
@@ -1097,8 +1120,10 @@ $ ./z.py  | ./puff | grep DIST | sort | uniq | awk -F, '{ print $2,$1 }' OSF=, -
 				node_index = node_index * 2 + 2;
 			}
 		}
-		dist_tree[node_index].is_leaf = 1;
-		dist_tree[node_index].symbol = dist_codes_table[i].symbol;
+		//dist_tree[node_index].is_leaf = 1;
+		//dist_tree[node_index].symbol = dist_codes_table[i].symbol;
+		assert(dist_tree[node_index].is_leaf == 1);
+		assert(dist_tree[node_index].symbol == dist_codes_table[i].symbol);
 	}
 	printf("DIST TREE BUILT!\n");
 
