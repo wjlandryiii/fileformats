@@ -643,6 +643,8 @@ void example3(){
 	}
 }
 
+void build_tree(int *lengths, int nlengths, struct tree_node *tree, int nnodes);
+
 void example4(){
 	uint8_t data[] = {
 		0x9d, 0x93, 0x5d, 0x6e, 0xdc, 0x30, 0x0c, 0x84, 0xaf, 0xc2, 0x03, 0x2c,
@@ -727,7 +729,9 @@ void example4(){
 	assert(hdist + 1 == 20);
 	assert(hclen + 4 == 16);
 
-	int lengths[19] = {6, 5, 4, 3, 3, 4, 3, 3, 0, 3, 0, 3, 0, 4, 0, 6, 0, 0, 0};
+	int debug_lengths[19] = {6, 5, 4, 3, 3, 4, 3, 3, 0, 3, 0, 3, 0, 4, 0, 6, 0, 0, 0};
+	int lengths_order[19] = { 16, 17, 18,  0,  8,  7,  9,  6, 10,  5, 11, 4, 12,  3, 13,  2, 14,  1, 15, };
+	int lengths[19] = {0};
 
 	for(int i = 0; i < hclen+4; i++){
 		int a, b, c;
@@ -737,7 +741,9 @@ void example4(){
 		int len = a | b<<1 | c <<2;
 		//len = a<<2 | b<<1 | c;
 		printf("LEN%d: %s (%d)\n", i, tobin(len, 3), len);
-		assert(len == lengths[i]);
+		assert(len == debug_lengths[i]);
+
+		lengths[lengths_order[i]] = len;
 	}
 
 /* lengths:
@@ -804,6 +810,9 @@ Symbol Lenght   Code
 
 */
 
+
+	build_tree(lengths, sizeof(lengths)/sizeof(lengths[0]), encode_tree, sizeof(encode_tree)/sizeof(encode_tree[0]));
+
 	struct enc_codes {
 		int symbol;
 		char *code;
@@ -825,7 +834,7 @@ Symbol Lenght   Code
 	};
 
 	int node_index = 0;
-	memset(encode_tree, 0, sizeof(encode_tree));
+	//memset(encode_tree, 0, sizeof(encode_tree));
 
 	for(int i = 0; i < 12; i++){
 		node_index = 0;
@@ -838,8 +847,16 @@ Symbol Lenght   Code
 				node_index = node_index * 2 + 2;
 			}
 		}
+		/*
 		encode_tree[node_index].is_leaf = 1;
 		encode_tree[node_index].symbol = codes_table[i].symbol;
+		*/
+
+		printf("Testing: %d", i);
+		fflush(stdout);
+		assert(encode_tree[node_index].is_leaf == 1);
+		assert(encode_tree[node_index].symbol == codes_table[i].symbol);
+		printf("... OK\n");
 	}
 
 	printf("tree is build\n");
@@ -1160,7 +1177,92 @@ $ ./z.py  | ./puff | grep DIST | sort | uniq | awk -F, '{ print $2,$1 }' OSF=, -
 
 }
 
+void build_tree(int *lengths, int nlengths, struct tree_node *tree, int nnodes){
+	int bl_count[16] = {0};
+	int next_code[16] = {0};
 
+	for(int i = 0; i < nlengths; i++){
+		int length = lengths[i];
+
+		if(0 <= length && length <= 15){
+			bl_count[length] += 1;
+		} else {
+			fflush(stdout);
+			fprintf(stderr, "invalid length: %d\n", length);
+			exit(1);
+		}
+	}
+
+	printf("After step 1:\n");
+	printf("\n");
+	printf("N      bl_count[N]\n");
+	printf("-      -----------\n");
+	for(int i = 0; i < 16; i++){
+		if(0 < bl_count[i]){
+			printf("%d     %d\n", i, bl_count[i]);
+		}
+	}
+	printf("\n\n");
+
+	int code = 0;
+	bl_count[0] = 0;
+	for(int bits = 1; bits < 16; bits++){
+		code = (code + bl_count[bits - 1]) << 1;
+		next_code[bits] = code;
+	}
+
+	printf("After step 2:\n");
+	printf("\n");
+	printf("N      next_code[N]\n");
+	printf("-      ------------\n");
+	for(int i = 0; i < 16; i++){
+		if(0 < next_code[i] && bl_count[i] != 0){
+			printf("%d     %d\n", i, next_code[i]);
+		}
+	}
+
+	memset(tree, 0, sizeof(*tree) * nnodes);
+
+	for(int i = 0; i < nlengths; i++){
+		int l = lengths[i];
+		if(l != 0){
+			int code = next_code[l];
+			next_code[l] += 1;
+
+			printf("%-3d:", i);
+			int node_index = 0;
+			for(int j = l - 1; 0 <= j; j--){
+				int bit = (code >> j) & 1;
+				printf("%c", bit == 0 ? '0' : '1');
+				fflush(stdout);
+				assert(tree[node_index].is_leaf == 0);
+				if(bit == 0){
+					node_index = node_index * 2 + 1;
+				} else {
+					node_index = node_index * 2 + 2;
+				}
+			}
+			tree[node_index].is_leaf = 1;
+			tree[node_index].symbol = i;
+			printf("\n");
+		}
+	}
+}
+
+
+void example5(){
+
+	int lengths[] = {3, 3, 3, 3, 3, 2, 4, 4};
+
+	build_tree(lengths, sizeof(lengths)/sizeof(lengths[0]), dist_tree, sizeof(dist_tree)/sizeof(dist_tree[0]));
+
+}
+
+void example6(){
+	int lengths[] = {3, 0, 6, 4, 3, 3, 3, 4, 3, 3, 0, 0, 0, 0, 0, 0, 6, 5, 4, 0};
+
+	build_tree(lengths, sizeof(lengths)/sizeof(lengths[0]), dist_tree, sizeof(dist_tree)/sizeof(dist_tree[0]));
+}
 
 void inflate(uint8_t *data, uint8_t *output);
 
@@ -1176,6 +1278,8 @@ int main(int argc, char *argv[]){
 	//example2();
 	//example3();
 	example4();
+	//example5();
+	//example6();
 
 #else
 	uint8_t *data = (uint8_t *)"\x01\x0c\x00\xf3\xff\x48\x65\x6c\x6c\x6f\x20\x77\x6f\x72\x6c\x64\x21";
