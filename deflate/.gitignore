@@ -1,3 +1,2 @@
-inflate
-output
 *.dSYM
+*.pyc
