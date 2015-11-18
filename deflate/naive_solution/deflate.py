@@ -43,7 +43,6 @@ And the mome raths outgrabe.
 
 message = "A AB ABC ABCD ABC AB A"
 
-#message = "Hello World!"
 
 message = """Christine, the strawberry girl
 Christine, banana split lady
@@ -51,7 +50,9 @@ Christine, the strawberry girl
 Christine sees her faces unfurl
 """
 
-compressed = zlib.compress(message, 1)
+message = "Hello World!"
+
+compressed = zlib.compress(message, 0)
 
 compressed = compressed[2:]
 compressed = compressed[:-4]

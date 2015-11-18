@@ -35,6 +35,8 @@ void example1(uint8_t *data, uint8_t *out_buff, int *out_len){
 	printf("LEN: %d\n", len);
 
 	assert(len == (~nlen & 0xffff));
+	assert(len == 0x000c);
+	assert(nlen == 0xfff3);
 
 	memcpy(out_buff, &data[5], len);
 	*out_len = len;
