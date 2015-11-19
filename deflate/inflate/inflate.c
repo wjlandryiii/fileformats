@@ -7,25 +7,15 @@
 #include <stdint.h>
 #include <assert.h>
 
-#define MAX_TREE_NODES (65536)
 static short lit_tree_fixed[1024];                  /* max_bits:9 */
 static short dist_tree_fixed[64];                   /* max_bits:5 */
-static short enc_tree[16];                          /* max_bits:3 */
-static short lit_tree_dynamic[MAX_TREE_NODES];      /* max_bits:15 */
-static short dist_tree_dynamic[MAX_TREE_NODES];     /* max_bits:15 */
+static short enc_tree[512];                         /* max_bits:8 */
+static short lit_tree_dynamic[65536];               /* max_bits:15 */
+static short dist_tree_dynamic[65536];              /* max_bits:15 */
 
 #define ARRAY_COUNT(A) (sizeof(A)/sizeof(A[0]))
 
 static void build_fixed_trees(void){
-
-	size_t bs;
-	bs = sizeof(lit_tree_fixed);
-	bs += sizeof(dist_tree_fixed);
-	bs += sizeof(enc_tree);
-	bs += sizeof(lit_tree_dynamic);
-	bs += sizeof(dist_tree_dynamic);
-	printf("SIZE: %lu\n", bs);
-
 	for(int i = 0; i < ARRAY_COUNT(lit_tree_fixed); i++){
 		lit_tree_fixed[i] = -1;
 	}
@@ -117,6 +107,11 @@ static void build_tree(int *lengths, int nlengths, short *tree, int nnodes){
 			for(int j = l - 1; 0 <= j; j--){
 				int bit = (code >> j) & 1;
 				fflush(stdout);
+				if(node_index >= nnodes){
+					printf("n: %d\n", node_index);
+					printf("nnodes: %d\n", nnodes);
+				}
+				assert(node_index < nnodes);
 				assert(tree[node_index] == -1);
 				if(bit == 0){
 					node_index = node_index * 2 + 1;
@@ -221,7 +216,7 @@ int inflate(uint8_t *input, int input_len, int *input_used, uint8_t *output, int
 				for(int i = 0; i < hclen + 4; i++){
 					enc_lengths[order[i]] = readint(input, &bit_index, 3);
 				}
-				build_tree(enc_lengths, 19, enc_tree, MAX_TREE_NODES);
+				build_tree(enc_lengths, 19, enc_tree, ARRAY_COUNT(enc_tree));
 				int lengths[318] = {0};
 
 				for(int i = 0; i < hlit + 257 + hdist + 1; i++){
@@ -263,8 +258,8 @@ int inflate(uint8_t *input, int input_len, int *input_used, uint8_t *output, int
 					}
 				}
 
-				build_tree(lengths, hlit + 257, lit_tree_dynamic, MAX_TREE_NODES);
-				build_tree(lengths + hlit + 257, hdist + 1,  dist_tree_dynamic, MAX_TREE_NODES);
+				build_tree(lengths, hlit + 257, lit_tree_dynamic, ARRAY_COUNT(lit_tree_dynamic));
+				build_tree(lengths + hlit + 257, hdist + 1,  dist_tree_dynamic, ARRAY_COUNT(dist_tree_dynamic));
 
 				lit_tree = lit_tree_dynamic;
 				dist_tree = dist_tree_dynamic;
