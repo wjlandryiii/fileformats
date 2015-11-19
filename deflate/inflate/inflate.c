@@ -7,16 +7,25 @@
 #include <stdint.h>
 #include <assert.h>
 
-#define MAX_TREE_NODES (524287)
-static int lit_tree_fixed[1024];
-static int dist_tree_fixed[64];
-static int enc_tree[MAX_TREE_NODES]; // 2 ^^ (18+1) - 1
-static int lit_tree_dynamic[MAX_TREE_NODES];
-static int dist_tree_dynamic[MAX_TREE_NODES];
+#define MAX_TREE_NODES (65536)
+static short lit_tree_fixed[1024];                  /* max_bits:9 */
+static short dist_tree_fixed[64];                   /* max_bits:5 */
+static short enc_tree[16];                          /* max_bits:3 */
+static short lit_tree_dynamic[MAX_TREE_NODES];      /* max_bits:15 */
+static short dist_tree_dynamic[MAX_TREE_NODES];     /* max_bits:15 */
 
 #define ARRAY_COUNT(A) (sizeof(A)/sizeof(A[0]))
 
 static void build_fixed_trees(void){
+
+	size_t bs;
+	bs = sizeof(lit_tree_fixed);
+	bs += sizeof(dist_tree_fixed);
+	bs += sizeof(enc_tree);
+	bs += sizeof(lit_tree_dynamic);
+	bs += sizeof(dist_tree_dynamic);
+	printf("SIZE: %lu\n", bs);
+
 	for(int i = 0; i < ARRAY_COUNT(lit_tree_fixed); i++){
 		lit_tree_fixed[i] = -1;
 	}
@@ -71,7 +80,7 @@ static void build_fixed_trees(void){
 	}
 }
 
-static void build_tree(int *lengths, int nlengths, int *tree, int nnodes){
+static void build_tree(int *lengths, int nlengths, short *tree, int nnodes){
 	int bl_count[16] = {0};
 	int next_code[16] = {0};
 
@@ -139,7 +148,7 @@ static int readint(uint8_t *data, int *bit_index, int nbits){
 	return result;
 }
 
-static int readsymbol(uint8_t *data, int *bit_index, int *tree){
+static int readsymbol(uint8_t *data, int *bit_index, short *tree){
 	int n = 0;
 
 	while(tree[n] == -1){
@@ -189,8 +198,8 @@ int inflate(uint8_t *input, int input_len, int *input_used, uint8_t *output, int
 				bit_index += 8;
 			}
 		} else if(btype == 1 || btype == 2){
-			int *lit_tree;
-			int *dist_tree;
+			short *lit_tree;
+			short *dist_tree;
 			if(btype == 1){
 				lit_tree = lit_tree_fixed;
 				dist_tree = dist_tree_fixed;
