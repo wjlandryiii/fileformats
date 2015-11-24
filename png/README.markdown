@@ -91,7 +91,7 @@ struct {
 * __Height__: valid range: 0 < Height < (2^31) - 1
 * __BitDepth__: bit depth per sample. valid values:
     1, 2, 4, 8, 16 (but not always, depends on color type)
-* __ColorType__: bitflag field.
+* __ColorType__: bitflag field, but valid values are limited to 0, 2, 3, 4, 6.
   - 1: palette used
   - 2: color used
   - 4: alpha used
